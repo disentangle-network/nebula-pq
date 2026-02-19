@@ -173,7 +173,7 @@ func TestCertificateV2_SignPQ(t *testing.T) {
 	assert.Equal(t, pubBytes, c.PublicKey())
 
 	// Verify signature length matches ML-DSA-87
-	assert.Equal(t, mldsa87.SignatureSize, len(c.Signature()))
+	assert.Len(t, c.Signature(), mldsa87.SignatureSize)
 
 	// Marshal and unmarshal roundtrip
 	b, err := c.Marshal()

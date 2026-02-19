@@ -21,7 +21,7 @@ func Test_keygenHelp(t *testing.T) {
 		t,
 		"Usage of "+os.Args[0]+" keygen <flags>: create a public/private key pair. the public key can be passed to `nebula-cert sign`\n"+
 			"  -curve string\n"+
-			"    \tECDH Curve (25519, P256) (default \"25519\")\n"+
+			"    \tECDH/KEM Curve (25519, P256, PQ) (default \"25519\")\n"+
 			"  -out-key string\n"+
 			"    \tRequired: path to write the private key to\n"+
 			"  -out-pub string\n"+
