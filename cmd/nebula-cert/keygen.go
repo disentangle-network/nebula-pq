@@ -24,7 +24,7 @@ func newKeygenFlags() *keygenFlags {
 	cf.set.Usage = func() {}
 	cf.outPubPath = cf.set.String("out-pub", "", "Required: path to write the public key to")
 	cf.outKeyPath = cf.set.String("out-key", "", "Required: path to write the private key to")
-	cf.curve = cf.set.String("curve", "25519", "ECDH Curve (25519, P256)")
+	cf.curve = cf.set.String("curve", "25519", "ECDH/KEM Curve (25519, P256, PQ)")
 	cf.p11url = p11Flag(cf.set)
 	return &cf
 }
@@ -64,6 +64,9 @@ func keygen(args []string, out io.Writer, errOut io.Writer) error {
 		case "P256":
 			pub, rawPriv = p256Keypair()
 			curve = cert.Curve_P256
+		case "PQ":
+			pub, rawPriv = pqKeypair()
+			curve = cert.Curve_PQ
 		default:
 			return fmt.Errorf("invalid curve: %s", *cf.curve)
 		}

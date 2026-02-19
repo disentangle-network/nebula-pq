@@ -141,18 +141,27 @@ func ixHandshakeStage1(f *Interface, via ViaSender, packet []byte, h *header.H) 
 		return
 	}
 
-	// For PQ, the cert's public key is ML-KEM-1024, not the X25519 PeerStatic.
-	// Pass nil to Recombine so the cert uses its own embedded public key.
-	var peerStaticForCert []byte
-	if ci.myCert.Curve() != cert.Curve_PQ {
-		peerStaticForCert = ci.H.PeerStatic()
-	}
-	rc, err := cert.Recombine(cert.Version(hs.Details.CertVersion), hs.Details.Cert, peerStaticForCert, ci.Curve())
-	if err != nil {
-		f.l.WithError(err).WithField("from", via).
-			WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
-			Info("Handshake did not contain a certificate")
-		return
+	var rc cert.Certificate
+	if ci.myCert.Curve() == cert.Curve_PQ {
+		// PQ certs include the full public key in the handshake bytes (not stripped).
+		// Unmarshal directly instead of using Recombine, which expects PeerStatic.
+		var unmarshalErr error
+		rc, unmarshalErr = cert.UnmarshalCertificateFromBytes(hs.Details.Cert, cert.Version(hs.Details.CertVersion), ci.Curve())
+		if unmarshalErr != nil {
+			f.l.WithError(unmarshalErr).WithField("from", via).
+				WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
+				Info("Handshake did not contain a valid PQ certificate")
+			return
+		}
+	} else {
+		var recombineErr error
+		rc, recombineErr = cert.Recombine(cert.Version(hs.Details.CertVersion), hs.Details.Cert, ci.H.PeerStatic(), ci.Curve())
+		if recombineErr != nil {
+			f.l.WithError(recombineErr).WithField("from", via).
+				WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
+				Info("Handshake did not contain a certificate")
+			return
+		}
 	}
 
 	remoteCert, err := f.pki.GetCAPool().VerifyCertificate(time.Now(), rc)
@@ -553,12 +562,12 @@ func ixHandshakeStage2(f *Interface, via ViaSender, hh *HandshakeHostInfo, packe
 		return true
 	}
 
-	// For PQ, the cert's public key is ML-KEM-1024, not the X25519 PeerStatic.
-	var peerStaticForCert2 []byte
-	if ci.myCert.Curve() != cert.Curve_PQ {
-		peerStaticForCert2 = ci.H.PeerStatic()
+	var rc cert.Certificate
+	if ci.myCert.Curve() == cert.Curve_PQ {
+		rc, err = cert.UnmarshalCertificateFromBytes(hs.Details.Cert, cert.Version(hs.Details.CertVersion), ci.Curve())
+	} else {
+		rc, err = cert.Recombine(cert.Version(hs.Details.CertVersion), hs.Details.Cert, ci.H.PeerStatic(), ci.Curve())
 	}
-	rc, err := cert.Recombine(cert.Version(hs.Details.CertVersion), hs.Details.Cert, peerStaticForCert2, ci.Curve())
 	if err != nil {
 		f.l.WithError(err).WithField("from", via).
 			WithField("vpnAddrs", hostinfo.vpnAddrs).
