@@ -761,7 +761,8 @@ func ixHandshakeStage2(f *Interface, via ViaSender, hh *HandshakeHostInfo, packe
 // key must be broken to compromise the session.
 //
 // The hybrid key is derived via HKDF-SHA256:
-//   hybridKey = HKDF(noiseKey, kemSharedSecret, "nebula-pq-hybrid-v1")
+//
+//	hybridKey = HKDF(noiseKey, kemSharedSecret, "nebula-pq-hybrid-v1")
 func pqMixCipherStates(dKey, eKey *noise.CipherState, kemSS []byte) (*NebulaCipherState, *NebulaCipherState, error) {
 	dNoiseKey := dKey.UnsafeKey()
 	eNoiseKey := eKey.UnsafeKey()
