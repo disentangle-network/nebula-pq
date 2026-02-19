@@ -74,6 +74,11 @@ message NebulaHandshakeDetails {
   uint32 CertVersion = 8;
   // reserved for WIP multiport
   reserved 6, 7;
+  // Post-Quantum KEM exchange (hybrid with X25519 DH)
+  // Initiator sends their ML-KEM-1024 ephemeral public key in message 1
+  bytes KemPublicKey = 9;
+  // Responder sends the ML-KEM-1024 ciphertext in message 2
+  bytes KemCiphertext = 10;
 }
 
 message NebulaControl {

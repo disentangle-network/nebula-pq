@@ -239,13 +239,14 @@ func (c *certificateV2) VerifyPrivateKey(curve Curve, key []byte) error {
 		pub = privkey.PublicKey().Bytes()
 	case Curve_PQ:
 		// Host certs use ML-KEM-1024 key agreement keys
-		if len(key) != mlkem1024.PrivateKeySize {
+		var sk mlkem1024.PrivateKey
+		if err := sk.Unpack(key); err != nil {
 			return ErrInvalidPrivateKey
 		}
-		_, sk := mlkem1024.NewKeyFromSeed(key[:mlkem1024.KeySeedSize])
-		pub, _ = sk.MarshalBinary()
-		// Compare only the public key portion
-		derivedPub := pub[:mlkem1024.PublicKeySize]
+		derivedPub, err := sk.Public().(*mlkem1024.PublicKey).MarshalBinary()
+		if err != nil {
+			return ErrInvalidPrivateKey
+		}
 		if !bytes.Equal(derivedPub, c.publicKey) {
 			return ErrPublicPrivateKeyMismatch
 		}

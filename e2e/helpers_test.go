@@ -102,7 +102,7 @@ func newSimpleServerWithUdpAndUnsafeNetworks(v cert.Version, caCrt cert.Certific
 		}
 	}
 
-	_, _, myPrivKey, myPEM := cert_test.NewTestCert(v, cert.Curve_CURVE25519, caCrt, caKey, name, time.Now(), time.Now().Add(5*time.Minute), vpnNetworks, unsafeNetworks, []string{})
+	_, _, myPrivKey, myPEM := cert_test.NewTestCert(v, caCrt.Curve(), caCrt, caKey, name, time.Now(), time.Now().Add(5*time.Minute), vpnNetworks, unsafeNetworks, []string{})
 
 	caB, err := caCrt.MarshalPEM()
 	if err != nil {

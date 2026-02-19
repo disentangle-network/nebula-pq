@@ -158,6 +158,20 @@ func Recombine(v Version, rawCertBytes, publicKey []byte, curve Curve) (Certific
 	return c, nil
 }
 
+// UnmarshalCertificateFromBytes unmarshals a certificate from raw bytes when the full certificate
+// (including public key) is already present. This is used for PQ certificates where the public key
+// is not stripped during handshake marshaling.
+func UnmarshalCertificateFromBytes(b []byte, v Version, curve Curve) (Certificate, error) {
+	switch v {
+	case VersionPre1, Version1:
+		return unmarshalCertificateV1(b, nil)
+	case Version2:
+		return unmarshalCertificateV2(b, nil, curve)
+	default:
+		return nil, ErrUnknownVersion
+	}
+}
+
 // CalculateAlternateFingerprint calculates a 2nd fingerprint representation for P256 certificates
 // CAPool blocklist testing through `VerifyCertificate` and `VerifyCachedCertificate` automatically performs this step.
 func CalculateAlternateFingerprint(c Certificate) (string, error) {

@@ -15,25 +15,25 @@ const ( //cert banners
 )
 
 const ( //key-agreement-key banners
-	X25519PrivateKeyBanner  = "NEBULA X25519 PRIVATE KEY"
-	X25519PublicKeyBanner   = "NEBULA X25519 PUBLIC KEY"
-	P256PrivateKeyBanner    = "NEBULA P256 PRIVATE KEY"
-	P256PublicKeyBanner     = "NEBULA P256 PUBLIC KEY"
+	X25519PrivateKeyBanner    = "NEBULA X25519 PRIVATE KEY"
+	X25519PublicKeyBanner     = "NEBULA X25519 PUBLIC KEY"
+	P256PrivateKeyBanner      = "NEBULA P256 PRIVATE KEY"
+	P256PublicKeyBanner       = "NEBULA P256 PUBLIC KEY"
 	MLKEM1024PrivateKeyBanner = "NEBULA MLKEM1024 PRIVATE KEY"
 	MLKEM1024PublicKeyBanner  = "NEBULA MLKEM1024 PUBLIC KEY"
 )
 
 /* including "ECDSA" in the P256 banners is a clue that these keys should be used only for signing */
 const ( //signing key banners
-	EncryptedECDSAP256PrivateKeyBanner   = "NEBULA ECDSA P256 ENCRYPTED PRIVATE KEY"
-	ECDSAP256PrivateKeyBanner            = "NEBULA ECDSA P256 PRIVATE KEY"
-	ECDSAP256PublicKeyBanner             = "NEBULA ECDSA P256 PUBLIC KEY"
-	EncryptedEd25519PrivateKeyBanner     = "NEBULA ED25519 ENCRYPTED PRIVATE KEY"
-	Ed25519PrivateKeyBanner              = "NEBULA ED25519 PRIVATE KEY"
-	Ed25519PublicKeyBanner               = "NEBULA ED25519 PUBLIC KEY"
-	EncryptedMLDSA87PrivateKeyBanner     = "NEBULA MLDSA87 ENCRYPTED PRIVATE KEY"
-	MLDSA87PrivateKeyBanner              = "NEBULA MLDSA87 PRIVATE KEY"
-	MLDSA87PublicKeyBanner               = "NEBULA MLDSA87 PUBLIC KEY"
+	EncryptedECDSAP256PrivateKeyBanner = "NEBULA ECDSA P256 ENCRYPTED PRIVATE KEY"
+	ECDSAP256PrivateKeyBanner          = "NEBULA ECDSA P256 PRIVATE KEY"
+	ECDSAP256PublicKeyBanner           = "NEBULA ECDSA P256 PUBLIC KEY"
+	EncryptedEd25519PrivateKeyBanner   = "NEBULA ED25519 ENCRYPTED PRIVATE KEY"
+	Ed25519PrivateKeyBanner            = "NEBULA ED25519 PRIVATE KEY"
+	Ed25519PublicKeyBanner             = "NEBULA ED25519 PUBLIC KEY"
+	EncryptedMLDSA87PrivateKeyBanner   = "NEBULA MLDSA87 ENCRYPTED PRIVATE KEY"
+	MLDSA87PrivateKeyBanner            = "NEBULA MLDSA87 PRIVATE KEY"
+	MLDSA87PublicKeyBanner             = "NEBULA MLDSA87 PUBLIC KEY"
 )
 
 // UnmarshalCertificateFromPEM will try to unmarshal the first pem block in a byte array, returning any non consumed

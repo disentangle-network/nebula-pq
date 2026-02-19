@@ -34,7 +34,7 @@ func Test_caHelp(t *testing.T) {
 			"  -argon-parallelism uint\n"+
 			"    \tOptional: Argon2 parallelism parameter used for encrypted private key passphrase (default 4)\n"+
 			"  -curve string\n"+
-			"    \tEdDSA/ECDSA Curve (25519, P256) (default \"25519\")\n"+
+			"    \tEdDSA/ECDSA/PQ Curve (25519, P256, PQ) (default \"25519\")\n"+
 			"  -duration duration\n"+
 			"    \tOptional: amount of time the certificate should be valid for. Valid time units are seconds: \"s\", minutes: \"m\", hours: \"h\" (default 8760h0m0s)\n"+
 			"  -encrypt\n"+
