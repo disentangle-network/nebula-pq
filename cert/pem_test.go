@@ -104,7 +104,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 	k, rest, curve, err = UnmarshalSigningPrivateKeyFromPEM(rest)
 	assert.Nil(t, k)
 	assert.Equal(t, rest, invalidPem)
-	require.EqualError(t, err, "bytes did not contain a proper Ed25519/ECDSA private key banner")
+	require.EqualError(t, err, "bytes did not contain a proper Ed25519/ECDSA/MLDSA87 private key banner")
 
 	// Fail due to invalid PEM format, because
 	// it's missing the requisite pre-encapsulation boundary.

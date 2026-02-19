@@ -9,6 +9,8 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/cloudflare/circl/kem/mlkem/mlkem1024"
+	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/ed25519"
 )
@@ -29,6 +31,14 @@ func NewTestCaCert(version Version, curve Curve, before, after time.Time, networ
 
 		pub = elliptic.Marshal(elliptic.P256(), privk.PublicKey.X, privk.PublicKey.Y)
 		priv = privk.D.FillBytes(make([]byte, 32))
+	case Curve_PQ:
+		// CA certs use ML-DSA-87 signing keys
+		pk, sk, err := mldsa87.GenerateKey(rand.Reader)
+		if err != nil {
+			panic(err)
+		}
+		pub = pk.Bytes()
+		priv = sk.Bytes()
 	default:
 		// There is no default to allow the underlying lib to respond with an error
 	}
@@ -87,6 +97,8 @@ func NewTestCert(v Version, curve Curve, ca Certificate, key []byte, name string
 		pub, priv = X25519Keypair()
 	case Curve_P256:
 		pub, priv = P256Keypair()
+	case Curve_PQ:
+		pub, priv = MLKEM1024Keypair()
 	default:
 		panic("unknown curve")
 	}
@@ -138,4 +150,16 @@ func P256Keypair() ([]byte, []byte) {
 	}
 	pubkey := privkey.PublicKey()
 	return pubkey.Bytes(), privkey.Bytes()
+}
+
+// MLKEM1024Keypair generates an ML-KEM-1024 key pair for PQ host certificates.
+// Returns (publicKey, privateKey) as raw byte slices.
+func MLKEM1024Keypair() ([]byte, []byte) {
+	pk, sk, err := mlkem1024.GenerateKeyPair(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	pubBytes, _ := pk.MarshalBinary()
+	privBytes, _ := sk.MarshalBinary()
+	return pubBytes, privBytes
 }

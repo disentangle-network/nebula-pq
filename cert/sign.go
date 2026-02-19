@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
 	"github.com/slackhq/nebula/cert/p256"
 )
 
@@ -65,6 +66,24 @@ func (t *TBSCertificate) Sign(signer Certificate, curve Curve, key []byte) (Cert
 			// - https://pkg.go.dev/crypto/ecdsa#SignASN1
 			hashed := sha256.Sum256(certBytes)
 			return ecdsa.SignASN1(rand.Reader, pk, hashed[:])
+		}
+		return t.SignWith(signer, curve, sp)
+	case Curve_PQ:
+		// ML-DSA-87 (FIPS 204) signing via cloudflare/circl
+		if len(key) != mldsa87.PrivateKeySize {
+			return nil, fmt.Errorf("invalid ML-DSA-87 private key size: got %d, want %d", len(key), mldsa87.PrivateKeySize)
+		}
+		var sk mldsa87.PrivateKey
+		var skBuf [mldsa87.PrivateKeySize]byte
+		copy(skBuf[:], key)
+		sk.Unpack(&skBuf)
+		sp := func(certBytes []byte) ([]byte, error) {
+			sig := make([]byte, mldsa87.SignatureSize)
+			err := mldsa87.SignTo(&sk, certBytes, nil, false, sig)
+			if err != nil {
+				return nil, fmt.Errorf("ML-DSA-87 signing failed: %w", err)
+			}
+			return sig, nil
 		}
 		return t.SignWith(signer, curve, sp)
 	default:

@@ -75,7 +75,7 @@ qrlJ69wer3ZUHFXA
 
 	// Fail due to invalid banner
 	curve, k, rest, err = DecryptAndUnmarshalSigningPrivateKey(passphrase, rest)
-	require.EqualError(t, err, "bytes did not contain a proper nebula encrypted Ed25519/ECDSA private key banner")
+	require.EqualError(t, err, "bytes did not contain a proper nebula encrypted Ed25519/ECDSA/MLDSA87 private key banner")
 	assert.Nil(t, k)
 	assert.Equal(t, rest, invalidPem)
 

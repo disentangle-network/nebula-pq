@@ -185,6 +185,8 @@ func EncryptAndMarshalSigningPrivateKey(curve Curve, b []byte, passphrase []byte
 		return pem.EncodeToMemory(&pem.Block{Type: EncryptedEd25519PrivateKeyBanner, Bytes: b}), nil
 	case Curve_P256:
 		return pem.EncodeToMemory(&pem.Block{Type: EncryptedECDSAP256PrivateKeyBanner, Bytes: b}), nil
+	case Curve_PQ:
+		return pem.EncodeToMemory(&pem.Block{Type: EncryptedMLDSA87PrivateKeyBanner, Bytes: b}), nil
 	default:
 		return nil, fmt.Errorf("invalid curve: %v", curve)
 	}
@@ -265,8 +267,10 @@ func DecryptAndUnmarshalSigningPrivateKey(passphrase, b []byte) (Curve, []byte, 
 		curve = Curve_CURVE25519
 	case EncryptedECDSAP256PrivateKeyBanner:
 		curve = Curve_P256
+	case EncryptedMLDSA87PrivateKeyBanner:
+		curve = Curve_PQ
 	default:
-		return curve, nil, r, fmt.Errorf("bytes did not contain a proper nebula encrypted Ed25519/ECDSA private key banner")
+		return curve, nil, r, fmt.Errorf("bytes did not contain a proper nebula encrypted Ed25519/ECDSA/MLDSA87 private key banner")
 	}
 
 	ned, err := UnmarshalNebulaEncryptedData(k.Bytes)
