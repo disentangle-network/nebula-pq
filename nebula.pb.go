@@ -548,6 +548,9 @@ type NebulaHandshakeDetails struct {
 	Cookie         uint64 `protobuf:"varint,4,opt,name=Cookie,proto3" json:"Cookie,omitempty"`
 	Time           uint64 `protobuf:"varint,5,opt,name=Time,proto3" json:"Time,omitempty"`
 	CertVersion    uint32 `protobuf:"varint,8,opt,name=CertVersion,proto3" json:"CertVersion,omitempty"`
+	// Post-Quantum KEM exchange fields (hybrid with X25519 DH)
+	KemPublicKey  []byte `protobuf:"bytes,9,opt,name=KemPublicKey,proto3" json:"KemPublicKey,omitempty"`
+	KemCiphertext []byte `protobuf:"bytes,10,opt,name=KemCiphertext,proto3" json:"KemCiphertext,omitempty"`
 }
 
 func (m *NebulaHandshakeDetails) Reset()         { *m = NebulaHandshakeDetails{} }
@@ -623,6 +626,20 @@ func (m *NebulaHandshakeDetails) GetCertVersion() uint32 {
 		return m.CertVersion
 	}
 	return 0
+}
+
+func (m *NebulaHandshakeDetails) GetKemPublicKey() []byte {
+	if m != nil {
+		return m.KemPublicKey
+	}
+	return nil
+}
+
+func (m *NebulaHandshakeDetails) GetKemCiphertext() []byte {
+	if m != nil {
+		return m.KemCiphertext
+	}
+	return nil
 }
 
 type NebulaControl struct {

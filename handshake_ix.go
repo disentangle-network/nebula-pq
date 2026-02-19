@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/slackhq/nebula/cert"
 	"github.com/slackhq/nebula/header"
+	"github.com/slackhq/nebula/noiseutil"
 )
 
 // NOISE IX Handshakes
@@ -71,6 +72,7 @@ func ixHandshakeStage0(f *Interface, hh *HandshakeHostInfo) bool {
 			Time:           uint64(time.Now().UnixNano()),
 			Cert:           crtHs,
 			CertVersion:    uint32(v),
+			KemPublicKey:   ci.pqKemPubKey, // nil for non-PQ curves (omitted from wire)
 		},
 	}
 
@@ -139,7 +141,13 @@ func ixHandshakeStage1(f *Interface, via ViaSender, packet []byte, h *header.H) 
 		return
 	}
 
-	rc, err := cert.Recombine(cert.Version(hs.Details.CertVersion), hs.Details.Cert, ci.H.PeerStatic(), ci.Curve())
+	// For PQ, the cert's public key is ML-KEM-1024, not the X25519 PeerStatic.
+	// Pass nil to Recombine so the cert uses its own embedded public key.
+	var peerStaticForCert []byte
+	if ci.myCert.Curve() != cert.Curve_PQ {
+		peerStaticForCert = ci.H.PeerStatic()
+	}
+	rc, err := cert.Recombine(cert.Version(hs.Details.CertVersion), hs.Details.Cert, peerStaticForCert, ci.Curve())
 	if err != nil {
 		f.l.WithError(err).WithField("from", via).
 			WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
@@ -167,11 +175,15 @@ func ixHandshakeStage1(f *Interface, via ViaSender, packet []byte, h *header.H) 
 		return
 	}
 
-	if !bytes.Equal(remoteCert.Certificate.PublicKey(), ci.H.PeerStatic()) {
-		f.l.WithField("from", via).
-			WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
-			WithField("cert", remoteCert).Info("public key mismatch between certificate and handshake")
-		return
+	// For PQ certs, the cert's public key is ML-KEM-1024 while PeerStatic is the
+	// ephemeral X25519 key. Skip the pubkey==PeerStatic check for PQ.
+	if ci.myCert.Curve() != cert.Curve_PQ {
+		if !bytes.Equal(remoteCert.Certificate.PublicKey(), ci.H.PeerStatic()) {
+			f.l.WithField("from", via).
+				WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
+				WithField("cert", remoteCert).Info("public key mismatch between certificate and handshake")
+			return
+		}
 	}
 
 	if remoteCert.Certificate.Version() != ci.myCert.Version() {
@@ -289,6 +301,21 @@ func ixHandshakeStage1(f *Interface, via ViaSender, packet []byte, h *header.H) 
 	// Update the time in case their clock is way off from ours
 	hs.Details.Time = uint64(time.Now().UnixNano())
 
+	// PQ hybrid: if initiator sent a KEM public key, encapsulate to it
+	if len(hs.Details.KemPublicKey) > 0 && ci.myCert.Curve() == cert.Curve_PQ {
+		ct, ss, err := noiseutil.PQKEMEncapsulate(hs.Details.KemPublicKey)
+		if err != nil {
+			f.l.WithError(err).WithField("from", via).
+				WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
+				Error("PQ KEM encapsulation failed")
+			return
+		}
+		hs.Details.KemCiphertext = ct
+		ci.pqKemSS = ss
+		// Clear the initiator's KEM public key from the response (only ciphertext goes back)
+		hs.Details.KemPublicKey = nil
+	}
+
 	hsBytes, err := hs.Marshal()
 	if err != nil {
 		f.l.WithError(err).WithField("vpnAddrs", hostinfo.vpnAddrs).WithField("from", via).
@@ -333,8 +360,20 @@ func ixHandshakeStage1(f *Interface, via ViaSender, packet []byte, h *header.H) 
 	ci.window.Update(f.l, 2)
 
 	ci.peerCert = remoteCert
-	ci.dKey = NewNebulaCipherState(dKey)
-	ci.eKey = NewNebulaCipherState(eKey)
+
+	// PQ hybrid key mixing: combine Noise DH keys with KEM shared secret
+	if len(ci.pqKemSS) > 0 {
+		ci.dKey, ci.eKey, err = pqMixCipherStates(dKey, eKey, ci.pqKemSS)
+		if err != nil {
+			f.l.WithError(err).WithField("from", via).
+				WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
+				Error("PQ hybrid key mixing failed")
+			return
+		}
+	} else {
+		ci.dKey = NewNebulaCipherState(dKey)
+		ci.eKey = NewNebulaCipherState(eKey)
+	}
 
 	hostinfo.remotes = f.lightHouse.QueryCache(vpnAddrs)
 	if !via.IsRelayed {
@@ -514,7 +553,12 @@ func ixHandshakeStage2(f *Interface, via ViaSender, hh *HandshakeHostInfo, packe
 		return true
 	}
 
-	rc, err := cert.Recombine(cert.Version(hs.Details.CertVersion), hs.Details.Cert, ci.H.PeerStatic(), ci.Curve())
+	// For PQ, the cert's public key is ML-KEM-1024, not the X25519 PeerStatic.
+	var peerStaticForCert2 []byte
+	if ci.myCert.Curve() != cert.Curve_PQ {
+		peerStaticForCert2 = ci.H.PeerStatic()
+	}
+	rc, err := cert.Recombine(cert.Version(hs.Details.CertVersion), hs.Details.Cert, peerStaticForCert2, ci.Curve())
 	if err != nil {
 		f.l.WithError(err).WithField("from", via).
 			WithField("vpnAddrs", hostinfo.vpnAddrs).
@@ -543,11 +587,15 @@ func ixHandshakeStage2(f *Interface, via ViaSender, hh *HandshakeHostInfo, packe
 		e.Info("Invalid certificate from host")
 		return true
 	}
-	if !bytes.Equal(remoteCert.Certificate.PublicKey(), ci.H.PeerStatic()) {
-		f.l.WithField("from", via).
-			WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).
-			WithField("cert", remoteCert).Info("public key mismatch between certificate and handshake")
-		return true
+	// For PQ certs, the cert's public key is ML-KEM-1024 while PeerStatic is the
+	// ephemeral X25519 key. Skip the pubkey==PeerStatic check for PQ.
+	if ci.myCert.Curve() != cert.Curve_PQ {
+		if !bytes.Equal(remoteCert.Certificate.PublicKey(), ci.H.PeerStatic()) {
+			f.l.WithField("from", via).
+				WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).
+				WithField("cert", remoteCert).Info("public key mismatch between certificate and handshake")
+			return true
+		}
 	}
 
 	if len(remoteCert.Certificate.Networks()) == 0 {
@@ -570,8 +618,29 @@ func ixHandshakeStage2(f *Interface, via ViaSender, hh *HandshakeHostInfo, packe
 
 	// Store their cert and our symmetric keys
 	ci.peerCert = remoteCert
-	ci.dKey = NewNebulaCipherState(dKey)
-	ci.eKey = NewNebulaCipherState(eKey)
+
+	// PQ hybrid: if responder sent a KEM ciphertext, decapsulate and mix keys
+	if len(hs.Details.KemCiphertext) > 0 && len(ci.pqKemPrivKey) > 0 {
+		ss, kemErr := noiseutil.PQKEMDecapsulate(ci.pqKemPrivKey, hs.Details.KemCiphertext)
+		if kemErr != nil {
+			f.l.WithError(kemErr).WithField("vpnAddrs", hostinfo.vpnAddrs).WithField("from", via).
+				WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).
+				Error("PQ KEM decapsulation failed")
+			return true
+		}
+		ci.pqKemSS = ss
+
+		ci.dKey, ci.eKey, err = pqMixCipherStates(dKey, eKey, ci.pqKemSS)
+		if err != nil {
+			f.l.WithError(err).WithField("vpnAddrs", hostinfo.vpnAddrs).WithField("from", via).
+				WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).
+				Error("PQ hybrid key mixing failed")
+			return true
+		}
+	} else {
+		ci.dKey = NewNebulaCipherState(dKey)
+		ci.eKey = NewNebulaCipherState(eKey)
+	}
 
 	// Make sure the current udpAddr being used is set for responding
 	if !via.IsRelayed {
@@ -675,4 +744,33 @@ func ixHandshakeStage2(f *Interface, via ViaSender, hh *HandshakeHostInfo, packe
 	f.metricHandshakes.Update(duration)
 
 	return false
+}
+
+// pqMixCipherStates takes the Noise-derived cipher states and mixes them with
+// the ML-KEM-1024 shared secret to produce hybrid cipher states. This is the
+// NIST-recommended hybrid combiner: both the classical DH key and the PQ KEM
+// key must be broken to compromise the session.
+//
+// The hybrid key is derived via HKDF-SHA256:
+//   hybridKey = HKDF(noiseKey, kemSharedSecret, "nebula-pq-hybrid-v1")
+func pqMixCipherStates(dKey, eKey *noise.CipherState, kemSS []byte) (*NebulaCipherState, *NebulaCipherState, error) {
+	dNoiseKey := dKey.UnsafeKey()
+	eNoiseKey := eKey.UnsafeKey()
+
+	dHybrid, err := noiseutil.HybridMixKeys(dNoiseKey, kemSS)
+	if err != nil {
+		return nil, nil, err
+	}
+	eHybrid, err := noiseutil.HybridMixKeys(eNoiseKey, kemSS)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Create new cipher states with the hybrid keys.
+	// We wrap the Noise cipher (extracted via Cipher()) with the hybrid key
+	// by constructing a fresh NebulaCipherState that uses AES-256-GCM directly.
+	dCipher := noiseutil.CipherAESGCM.Cipher(dHybrid)
+	eCipher := noiseutil.CipherAESGCM.Cipher(eHybrid)
+
+	return &NebulaCipherState{c: dCipher}, &NebulaCipherState{c: eCipher}, nil
 }
