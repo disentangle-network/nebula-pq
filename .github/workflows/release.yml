@@ -5,6 +5,9 @@ on:
 
 name: Create release and upload binaries
 
+permissions:
+  contents: write
+
 jobs:
   build-linux:
     name: Build Linux/BSD All
