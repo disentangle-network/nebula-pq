@@ -1,3 +1,18 @@
+# Nebula-PQ
+
+[![Build and test](https://github.com/disentangle-network/nebula-pq/actions/workflows/test.yml/badge.svg)](https://github.com/disentangle-network/nebula-pq/actions/workflows/test.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**Post-quantum fork of [Nebula](https://github.com/slackhq/nebula)** with hybrid X25519 + ML-KEM-1024 key exchange and ML-DSA-87 certificate support. Drop-in replacement — all existing Nebula configurations work unchanged; PQ curves activate only when explicitly configured.
+
+### PQ Additions
+- Hybrid handshake: X25519 classical + ML-KEM-1024 post-quantum key encapsulation
+- ML-DSA-87 certificate authority and node certificates via `nebula-cert`
+- Backward-compatible: classical and PQ nodes can coexist on the same mesh
+- Multi-arch Docker image: `ghcr.io/disentangle-network/nebula-pq`
+
+---
+
 ## What is Nebula?
 Nebula is a scalable overlay networking tool with a focus on performance, simplicity and security.
 It lets you seamlessly connect computers anywhere in the world. Nebula is portable, and runs on Linux, OSX, Windows, iOS, and Android.
