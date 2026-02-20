@@ -14,6 +14,7 @@ import (
 
 	"github.com/skip2/go-qrcode"
 	"github.com/slackhq/nebula/cert"
+	"github.com/slackhq/nebula/noiseutil"
 	"github.com/slackhq/nebula/pkclient"
 	"golang.org/x/crypto/curve25519"
 )
@@ -405,6 +406,8 @@ func newKeypair(curve cert.Curve) ([]byte, []byte) {
 		return x25519Keypair()
 	case cert.Curve_P256:
 		return p256Keypair()
+	case cert.Curve_PQ:
+		return pqKeypair()
 	default:
 		return nil, nil
 	}
@@ -431,6 +434,14 @@ func p256Keypair() ([]byte, []byte) {
 	}
 	pubkey := privkey.PublicKey()
 	return pubkey.Bytes(), privkey.Bytes()
+}
+
+func pqKeypair() ([]byte, []byte) {
+	pub, priv, err := noiseutil.PQKEMKeypair()
+	if err != nil {
+		panic(err)
+	}
+	return pub, priv
 }
 
 func signSummary() string {

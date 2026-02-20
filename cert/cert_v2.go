@@ -15,6 +15,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/cloudflare/circl/kem/mlkem/mlkem1024"
+	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/curve25519"
@@ -159,6 +161,16 @@ func (c *certificateV2) CheckSignature(key []byte) bool {
 		}
 		hashed := sha256.Sum256(b)
 		return ecdsa.VerifyASN1(pubKey, hashed[:], c.signature)
+	case Curve_PQ:
+		// ML-DSA-87 (FIPS 204) verification
+		if len(key) != mldsa87.PublicKeySize {
+			return false
+		}
+		var pk mldsa87.PublicKey
+		var pkBuf [mldsa87.PublicKeySize]byte
+		copy(pkBuf[:], key)
+		pk.Unpack(&pkBuf)
+		return mldsa87.Verify(&pk, b, nil, c.signature)
 	default:
 		return false
 	}
@@ -192,6 +204,19 @@ func (c *certificateV2) VerifyPrivateKey(curve Curve, key []byte) error {
 			if !bytes.Equal(pub, c.publicKey) {
 				return ErrPublicPrivateKeyMismatch
 			}
+		case Curve_PQ:
+			// CA certs use ML-DSA-87 signing keys
+			if len(key) != mldsa87.PrivateKeySize {
+				return ErrInvalidPrivateKey
+			}
+			var sk mldsa87.PrivateKey
+			var skBuf [mldsa87.PrivateKeySize]byte
+			copy(skBuf[:], key)
+			sk.Unpack(&skBuf)
+			derivedPub := sk.Public().(*mldsa87.PublicKey).Bytes()
+			if !bytes.Equal(derivedPub, c.publicKey) {
+				return ErrPublicPrivateKeyMismatch
+			}
 		default:
 			return fmt.Errorf("invalid curve: %s", curve)
 		}
@@ -212,6 +237,20 @@ func (c *certificateV2) VerifyPrivateKey(curve Curve, key []byte) error {
 			return ErrInvalidPrivateKey
 		}
 		pub = privkey.PublicKey().Bytes()
+	case Curve_PQ:
+		// Host certs use ML-KEM-1024 key agreement keys
+		var sk mlkem1024.PrivateKey
+		if err := sk.Unpack(key); err != nil {
+			return ErrInvalidPrivateKey
+		}
+		derivedPub, err := sk.Public().(*mlkem1024.PublicKey).MarshalBinary()
+		if err != nil {
+			return ErrInvalidPrivateKey
+		}
+		if !bytes.Equal(derivedPub, c.publicKey) {
+			return ErrPublicPrivateKeyMismatch
+		}
+		return nil
 	default:
 		return fmt.Errorf("invalid curve: %s", curve)
 	}

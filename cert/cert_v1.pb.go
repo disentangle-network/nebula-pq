@@ -25,6 +25,8 @@ type Curve int32
 const (
 	Curve_CURVE25519 Curve = 0
 	Curve_P256       Curve = 1
+	// Post-Quantum: ML-DSA-87 (signing) + ML-KEM-1024 (key agreement)
+	Curve_PQ Curve = 2
 )
 
 // Enum value maps for Curve.
@@ -32,10 +34,12 @@ var (
 	Curve_name = map[int32]string{
 		0: "CURVE25519",
 		1: "P256",
+		2: "PQ",
 	}
 	Curve_value = map[string]int32{
 		"CURVE25519": 0,
 		"P256":       1,
+		"PQ":         2,
 	}
 )
 

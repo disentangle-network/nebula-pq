@@ -8,6 +8,8 @@ option go_package = "github.com/slackhq/nebula/cert";
 enum Curve {
   CURVE25519 = 0;
   P256 = 1;
+  // Post-Quantum: ML-DSA-87 (signing) + ML-KEM-1024 (key agreement)
+  PQ = 2;
 }
 
 message RawNebulaCertificate {

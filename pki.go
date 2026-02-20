@@ -402,9 +402,18 @@ func newCertState(dv cert.Version, v1, v2 cert.Certificate, pkcs11backed bool, p
 			}
 		}
 
-		v2hs, err := v2.MarshalForHandshakes()
-		if err != nil {
-			return nil, fmt.Errorf("error marshalling certificate for handshake: %w", err)
+		var v2hs []byte
+		var v2hsErr error
+		if v2.Curve() == cert.Curve_PQ {
+			// PQ certs must include the full public key (ML-KEM-1024) in handshake bytes
+			// because MarshalForHandshakes strips it, and the Noise PeerStatic (X25519)
+			// is different from the cert's key agreement key.
+			v2hs, v2hsErr = v2.Marshal()
+		} else {
+			v2hs, v2hsErr = v2.MarshalForHandshakes()
+		}
+		if v2hsErr != nil {
+			return nil, fmt.Errorf("error marshalling certificate for handshake: %w", v2hsErr)
 		}
 		cs.v2Cert = v2
 		cs.v2HandshakeBytes = v2hs

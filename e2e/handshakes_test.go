@@ -134,6 +134,48 @@ func TestGoodHandshake(t *testing.T) {
 	theirControl.Stop()
 }
 
+func TestGoodHandshakePQ(t *testing.T) {
+	// Post-quantum handshake test: ML-DSA-87 certificates + hybrid X25519/ML-KEM-1024 key exchange
+	ca, _, caKey, _ := cert_test.NewTestCaCert(cert.Version2, cert.Curve_PQ, time.Now(), time.Now().Add(10*time.Minute), nil, nil, []string{})
+	myControl, myVpnIpNet, myUdpAddr, _ := newSimpleServer(cert.Version2, ca, caKey, "me-pq", "10.128.0.1/24", nil)
+	theirControl, theirVpnIpNet, theirUdpAddr, _ := newSimpleServer(cert.Version2, ca, caKey, "them-pq", "10.128.0.2/24", nil)
+
+	// Put their info in our lighthouse
+	myControl.InjectLightHouseAddr(theirVpnIpNet[0].Addr(), theirUdpAddr)
+
+	// Start the servers
+	myControl.Start()
+	theirControl.Start()
+
+	t.Log("PQ: Send a udp packet through to begin standing up the tunnel")
+	myControl.InjectTunUDPPacket(theirVpnIpNet[0].Addr(), 80, myVpnIpNet[0].Addr(), 80, []byte("Hi from PQ me"))
+
+	t.Log("PQ: Have them consume my stage 0 packet. They have a tunnel now")
+	theirControl.InjectUDPPacket(myControl.GetFromUDP(true))
+
+	t.Log("PQ: Have me consume their stage 1 packet. I have a tunnel now")
+	myControl.InjectUDPPacket(theirControl.GetFromUDP(true))
+
+	t.Log("PQ: Wait until we see my cached packet come through")
+	myControl.WaitForType(1, 0, theirControl)
+
+	t.Log("PQ: Make sure our host infos are correct")
+	assertHostInfoPair(t, myUdpAddr, theirUdpAddr, myVpnIpNet, theirVpnIpNet, myControl, theirControl)
+
+	t.Log("PQ: Get that cached packet and make sure it looks right")
+	myCachedPacket := theirControl.GetFromTun(true)
+	assertUdpPacket(t, []byte("Hi from PQ me"), myCachedPacket, myVpnIpNet[0].Addr(), theirVpnIpNet[0].Addr(), 80, 80)
+
+	t.Log("PQ: Do a bidirectional tunnel test")
+	r := router.NewR(t, myControl, theirControl)
+	defer r.RenderFlow()
+	assertTunnel(t, myVpnIpNet[0].Addr(), theirVpnIpNet[0].Addr(), myControl, theirControl, r)
+
+	r.RenderHostmaps("PQ Final hostmaps", myControl, theirControl)
+	myControl.Stop()
+	theirControl.Stop()
+}
+
 func TestGoodHandshakeNoOverlap(t *testing.T) {
 	ca, _, caKey, _ := cert_test.NewTestCaCert(cert.Version2, cert.Curve_CURVE25519, time.Now(), time.Now().Add(10*time.Minute), nil, nil, []string{})
 	myControl, myVpnIpNet, myUdpAddr, _ := newSimpleServer(cert.Version2, ca, caKey, "me", "10.128.0.1/24", nil)
