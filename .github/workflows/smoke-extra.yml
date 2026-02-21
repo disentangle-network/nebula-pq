@@ -1,8 +1,5 @@
 name: smoke-extra
 on:
-  push:
-    branches:
-      - master
   pull_request:
     types: [opened, synchronize, labeled, reopened]
     paths:
@@ -15,7 +12,7 @@ on:
 jobs:
 
   smoke-extra:
-    if: github.ref == 'refs/heads/master' || contains(github.event.pull_request.labels.*.name, 'smoke-test-extra')
+    if: contains(github.event.pull_request.labels.*.name, 'smoke-test-extra')
     name: Run extra smoke tests
     runs-on: ubuntu-latest
     steps:
