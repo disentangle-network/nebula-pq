@@ -18,9 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v4
 
-    - uses: actions/setup-go@v6
+    - uses: actions/setup-go@v5
       with:
         go-version-file: 'go.mod'
 
@@ -38,13 +38,22 @@ jobs:
     - name: Test
       run: make test
 
+    - name: Coverage
+      run: go test -coverprofile=coverage.out ./...
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v4
+      with:
+        files: coverage.out
+        fail_ci_if_error: false
+
     - name: End 2 end
       run: make e2evv
 
     - name: Build test mobile
       run: make build-test-mobile
 
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v4
       with:
         name: e2e packet flow linux-latest
         path: e2e/mermaid/linux-latest
@@ -55,9 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v4
 
-    - uses: actions/setup-go@v6
+    - uses: actions/setup-go@v5
       with:
         go-version-file: 'go.mod'
 
@@ -75,9 +84,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v4
 
-    - uses: actions/setup-go@v6
+    - uses: actions/setup-go@v5
       with:
         go-version-file: 'go.mod'
 
@@ -95,9 +104,9 @@ jobs:
         os: [windows-latest, macos-latest]
     steps:
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v4
 
-    - uses: actions/setup-go@v6
+    - uses: actions/setup-go@v5
       with:
         go-version-file: 'go.mod'
 
@@ -121,8 +130,21 @@ jobs:
     - name: End 2 end
       run: make e2evv
 
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v4
       with:
         name: e2e packet flow ${{ matrix.os }}
         path: e2e/mermaid/${{ matrix.os }}
         if-no-files-found: warn
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
