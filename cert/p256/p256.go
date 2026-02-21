@@ -80,7 +80,24 @@ func Swap(sig []byte) ([]byte, error) {
 	return encodeSignature(newR, newS)
 }
 
-// parseSignature taken exactly from crypto/ecdsa/ecdsa.go
+// scalarSize is the byte length of a P-256 scalar (256 bits / 8).
+const scalarSize = 32
+
+// padScalar zero-pads b to scalarSize bytes. ASN.1 DER strips leading zero
+// bytes from integers, so R and S values shorter than scalarSize are valid
+// scalars with a zero high byte. Padding restores canonical fixed-length
+// representation so that bigmod and round-trip comparisons behave correctly.
+func padScalar(b []byte) []byte {
+	if len(b) == scalarSize {
+		return b
+	}
+	out := make([]byte, scalarSize)
+	copy(out[scalarSize-len(b):], b)
+	return out
+}
+
+// parseSignature taken exactly from crypto/ecdsa/ecdsa.go, with scalar values
+// zero-padded to scalarSize to ensure a canonical fixed-length representation.
 func parseSignature(sig []byte) (r, s []byte, err error) {
 	var inner cryptobyte.String
 	input := cryptobyte.String(sig)
@@ -91,7 +108,7 @@ func parseSignature(sig []byte) (r, s []byte, err error) {
 		!inner.Empty() {
 		return nil, nil, errors.New("invalid ASN.1")
 	}
-	return r, s, nil
+	return padScalar(r), padScalar(s), nil
 }
 
 func encodeSignature(r, s []byte) ([]byte, error) {
