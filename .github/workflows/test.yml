@@ -22,8 +22,7 @@ jobs:
 
     - uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
-        check-latest: true
+        go-version-file: 'go.mod'
 
     - name: Build
       run: make all
@@ -60,8 +59,7 @@ jobs:
 
     - uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
-        check-latest: true
+        go-version-file: 'go.mod'
 
     - name: Build
       run: make bin-boringcrypto
@@ -81,8 +79,7 @@ jobs:
 
     - uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
-        check-latest: true
+        go-version-file: 'go.mod'
 
     - name: Build
       run: make bin-pkcs11
@@ -102,8 +99,7 @@ jobs:
 
     - uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
-        check-latest: true
+        go-version-file: 'go.mod'
 
     - name: Build nebula
       run: go build ./cmd/nebula
