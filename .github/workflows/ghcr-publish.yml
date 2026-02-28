@@ -37,7 +37,7 @@ jobs:
             build/${{ matrix.goos }}-${{ matrix.goarch }}/nebula \
             build/${{ matrix.goos }}-${{ matrix.goarch }}/nebula-cert
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: build-${{ matrix.goos }}-${{ matrix.goarch }}
           path: build/${{ matrix.goos }}-${{ matrix.goarch }}/
