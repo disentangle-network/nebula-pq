@@ -28,8 +28,8 @@ func TestRsEncodeDecodeRoundTrip(t *testing.T) {
 	chunks, err := rsEncode(msg, handshakeID, noiseMsgNum, DefaultParityShards, DefaultChunkPayloadSize)
 	require.NoError(t, err)
 
-	// With 9000 bytes and 1200-byte chunks: ceil(9000/1200) = 8 data shards + 3 parity = 11
-	expectedDataShards := (payloadSize + DefaultChunkPayloadSize - 1) / DefaultChunkPayloadSize
+	// rsEncode prepends a 4-byte length prefix, so effective payload is payloadSize + 4
+	expectedDataShards := (payloadSize + 4 + DefaultChunkPayloadSize - 1) / DefaultChunkPayloadSize
 	expectedTotal := expectedDataShards + DefaultParityShards
 	assert.Len(t, chunks, expectedTotal)
 
@@ -62,10 +62,9 @@ func TestRsEncodeDecodeRoundTrip(t *testing.T) {
 	payload, err := rsDecode(shards, expectedDataShards, expectedTotal)
 	require.NoError(t, err)
 
-	// The reconstructed payload should match the original (may have trailing zero padding)
+	// The reconstructed payload should exactly match the original (length prefix strips padding)
 	originalPayload := msg[header.Len:]
-	assert.True(t, len(payload) >= len(originalPayload))
-	assert.Equal(t, originalPayload, payload[:len(originalPayload)])
+	assert.Equal(t, originalPayload, payload)
 }
 
 func TestRsDecodeWithMissingShards(t *testing.T) {
@@ -78,7 +77,7 @@ func TestRsDecodeWithMissingShards(t *testing.T) {
 	chunks, err := rsEncode(msg, 100, 0, DefaultParityShards, DefaultChunkPayloadSize)
 	require.NoError(t, err)
 
-	dataShards := (payloadSize + DefaultChunkPayloadSize - 1) / DefaultChunkPayloadSize
+	dataShards := (payloadSize + 4 + DefaultChunkPayloadSize - 1) / DefaultChunkPayloadSize
 	totalShards := dataShards + DefaultParityShards
 
 	allShards := extractShards(chunks)
@@ -99,7 +98,7 @@ func TestRsDecodeWithMissingShards(t *testing.T) {
 		require.NoError(t, err, "failed with %d missing shards", numMissing)
 
 		originalPayload := msg[header.Len:]
-		assert.Equal(t, originalPayload, payload[:len(originalPayload)],
+		assert.Equal(t, originalPayload, payload,
 			"payload mismatch with %d missing shards", numMissing)
 	}
 }
@@ -114,7 +113,7 @@ func TestRsDecodeTooManyMissing(t *testing.T) {
 	chunks, err := rsEncode(msg, 100, 0, DefaultParityShards, DefaultChunkPayloadSize)
 	require.NoError(t, err)
 
-	dataShards := (payloadSize + DefaultChunkPayloadSize - 1) / DefaultChunkPayloadSize
+	dataShards := (payloadSize + 4 + DefaultChunkPayloadSize - 1) / DefaultChunkPayloadSize
 	totalShards := dataShards + DefaultParityShards
 
 	shards := extractShards(chunks)
@@ -168,7 +167,7 @@ func TestRsEncodeDecodeMessage2(t *testing.T) {
 	}
 
 	// Decode
-	dataShards := (payloadSize + DefaultChunkPayloadSize - 1) / DefaultChunkPayloadSize
+	dataShards := (payloadSize + 4 + DefaultChunkPayloadSize - 1) / DefaultChunkPayloadSize
 	totalShards := dataShards + DefaultParityShards
 
 	shards := extractShards(chunks)
@@ -176,7 +175,7 @@ func TestRsEncodeDecodeMessage2(t *testing.T) {
 	require.NoError(t, err)
 
 	originalPayload := msg[header.Len:]
-	assert.Equal(t, originalPayload, payload[:len(originalPayload)])
+	assert.Equal(t, originalPayload, payload)
 }
 
 func TestRsEncodeDecodeVariousSizes(t *testing.T) {
@@ -192,7 +191,7 @@ func TestRsEncodeDecodeVariousSizes(t *testing.T) {
 		chunks, err := rsEncode(msg, 1, 0, DefaultParityShards, DefaultChunkPayloadSize)
 		require.NoError(t, err, "encode failed for payload size %d", payloadSize)
 
-		expectedDataShards := (payloadSize + DefaultChunkPayloadSize - 1) / DefaultChunkPayloadSize
+		expectedDataShards := (payloadSize + 4 + DefaultChunkPayloadSize - 1) / DefaultChunkPayloadSize
 		expectedTotal := expectedDataShards + DefaultParityShards
 		assert.Len(t, chunks, expectedTotal, "wrong chunk count for payload size %d", payloadSize)
 
@@ -200,7 +199,7 @@ func TestRsEncodeDecodeVariousSizes(t *testing.T) {
 		shards := extractShards(chunks)
 		payload, err := rsDecode(shards, expectedDataShards, expectedTotal)
 		require.NoError(t, err, "decode failed for payload size %d", payloadSize)
-		assert.Equal(t, msg[header.Len:], payload[:payloadSize], "payload mismatch for size %d", payloadSize)
+		assert.Equal(t, msg[header.Len:], payload, "payload mismatch for size %d", payloadSize)
 	}
 }
 

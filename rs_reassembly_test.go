@@ -58,7 +58,7 @@ func TestReassemblyManagerBasicReassembly(t *testing.T) {
 	assert.Equal(t, uint64(1), rh.MessageCounter)
 
 	// Verify payload matches
-	assert.Equal(t, msg[header.Len:], result[header.Len:header.Len+payloadSize])
+	assert.Equal(t, msg[header.Len:], result[header.Len:])
 }
 
 func TestReassemblyManagerWithMissingShards(t *testing.T) {
@@ -87,7 +87,7 @@ func TestReassemblyManagerWithMissingShards(t *testing.T) {
 
 	require.True(t, ok, "reassembly should succeed with %d missing shards", DefaultParityShards)
 	require.NotNil(t, result)
-	assert.Equal(t, msg[header.Len:], result[header.Len:header.Len+payloadSize])
+	assert.Equal(t, msg[header.Len:], result[header.Len:])
 }
 
 func TestReassemblyManagerDuplicateChunks(t *testing.T) {
@@ -119,7 +119,7 @@ func TestReassemblyManagerDuplicateChunks(t *testing.T) {
 
 	require.True(t, ok)
 	require.NotNil(t, result)
-	assert.Equal(t, msg[header.Len:], result[header.Len:header.Len+payloadSize])
+	assert.Equal(t, msg[header.Len:], result[header.Len:])
 }
 
 func TestReassemblyManagerMultipleSessions(t *testing.T) {
@@ -269,5 +269,5 @@ func TestReassemblyManagerMessage2(t *testing.T) {
 	var rh header.H
 	require.NoError(t, rh.Parse(result))
 	assert.Equal(t, uint64(2), rh.MessageCounter)
-	assert.Equal(t, msg[header.Len:], result[header.Len:header.Len+payloadSize])
+	assert.Equal(t, msg[header.Len:], result[header.Len:])
 }

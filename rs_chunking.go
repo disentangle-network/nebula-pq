@@ -53,8 +53,15 @@ func rsEncode(msg []byte, handshakeID uint32, noiseMsgNum uint8, parityShards, c
 		return nil, fmt.Errorf("failed to parse Nebula header: %w", err)
 	}
 
-	// The payload after the Nebula header is what we RS-encode
-	payload := msg[header.Len:]
+	// The payload after the Nebula header is what we RS-encode.
+	// Prepend a 4-byte length prefix so the decoder can strip RS padding.
+	rawPayload := msg[header.Len:]
+	payload := make([]byte, 4+len(rawPayload))
+	payload[0] = byte(len(rawPayload) >> 24)
+	payload[1] = byte(len(rawPayload) >> 16)
+	payload[2] = byte(len(rawPayload) >> 8)
+	payload[3] = byte(len(rawPayload))
+	copy(payload[4:], rawPayload)
 
 	// Auto-calculate data shards so each shard fits within chunkPayloadSize
 	dataShards := (len(payload) + chunkPayloadSize - 1) / chunkPayloadSize
@@ -151,13 +158,23 @@ func rsDecode(shards [][]byte, dataShards, totalShards int) ([]byte, error) {
 		return nil, fmt.Errorf("RS verification: shards are not consistent")
 	}
 
-	// Concatenate data shards to get the payload
-	var payload []byte
+	// Concatenate data shards to get the length-prefixed payload
+	var prefixed []byte
 	for i := 0; i < dataShards; i++ {
-		payload = append(payload, shards[i]...)
+		prefixed = append(prefixed, shards[i]...)
 	}
 
-	return payload, nil
+	// Extract original length from 4-byte prefix and strip RS padding
+	if len(prefixed) < 4 {
+		return nil, fmt.Errorf("reconstructed payload too short for length prefix")
+	}
+	origLen := int(prefixed[0])<<24 | int(prefixed[1])<<16 | int(prefixed[2])<<8 | int(prefixed[3])
+	prefixed = prefixed[4:]
+	if origLen > len(prefixed) {
+		return nil, fmt.Errorf("original length %d exceeds reconstructed data %d", origLen, len(prefixed))
+	}
+
+	return prefixed[:origLen], nil
 }
 
 // needsChunking returns true if the handshake message is too large for a single UDP packet.
