@@ -333,10 +333,14 @@ func (f *Interface) reloadDisconnectInvalid(c *config.C) {
 }
 
 func (f *Interface) reloadFirewall(c *config.C) {
-	//TODO: need to trigger/detect if the certificate changed too
-	if c.HasChanged("firewall") == false {
-		f.l.Debug("No firewall config change detected")
+	firewallChanged := c.HasChanged("firewall")
+	certChanged := c.HasChanged("pki")
+	if !firewallChanged && !certChanged {
+		f.l.Debug("No firewall or certificate config change detected")
 		return
+	}
+	if certChanged {
+		f.l.Info("Certificate change detected, re-evaluating firewall rules")
 	}
 
 	fw, err := NewFirewallFromConfig(f.l, f.pki.getCertState(), c)

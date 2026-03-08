@@ -1,6 +1,6 @@
 module github.com/slackhq/nebula
 
-go 1.25.7
+go 1.26.1
 
 require (
 	dario.cat/mergo v1.0.2
@@ -10,6 +10,7 @@ require (
 	github.com/cloudflare/circl v1.6.3
 	github.com/cyberdelia/go-metrics-graphite v0.0.0-20161219230853-39f87cc3b432
 	github.com/flynn/noise v1.1.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gaissmai/bart v0.26.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/google/gopacket v1.1.19
