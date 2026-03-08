@@ -60,6 +60,7 @@ type HandshakeManager struct {
 	metricTimedOut         metrics.Counter
 	f                      *Interface
 	l                      *logrus.Logger
+	reassembly             *ReassemblyManager
 
 	// can be used to trigger outbound handshake for the given vpnIp
 	trigger chan netip.Addr
@@ -117,6 +118,7 @@ func NewHandshakeManager(l *logrus.Logger, mainHostMap *HostMap, lightHouse *Lig
 		metricInitiated:        metrics.GetOrRegisterCounter("handshake_manager.initiated", nil),
 		metricTimedOut:         metrics.GetOrRegisterCounter("handshake_manager.timed_out", nil),
 		l:                      l,
+		reassembly:             NewReassemblyManager(l),
 	}
 }
 
@@ -157,6 +159,19 @@ func (hm *HandshakeManager) HandleIncoming(via ViaSender, packet []byte, h *head
 			if tearDown && newHostinfo != nil {
 				hm.DeleteHostInfo(newHostinfo.hostinfo)
 			}
+		}
+
+	case header.HandshakeIXPSK0Chunked:
+		// RS-coded chunk: buffer and attempt reassembly
+		reassembled, ok := hm.reassembly.HandleChunk(packet, h)
+		if ok {
+			// Reassembly complete: re-parse the reconstructed header and process as normal
+			var reassembledH header.H
+			if err := reassembledH.Parse(reassembled); err != nil {
+				hm.l.WithError(err).Error("Failed to parse reassembled handshake header")
+				return
+			}
+			hm.HandleIncoming(via, reassembled, &reassembledH)
 		}
 	}
 }
