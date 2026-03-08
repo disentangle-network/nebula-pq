@@ -1,8 +1,8 @@
 FROM gcr.io/distroless/static:latest
 
 ARG TARGETOS TARGETARCH
-COPY build/$TARGETOS-$TARGETARCH/nebula /nebula
-COPY build/$TARGETOS-$TARGETARCH/nebula-cert /nebula-cert
+COPY --chmod=755 build/$TARGETOS-$TARGETARCH/nebula /nebula
+COPY --chmod=755 build/$TARGETOS-$TARGETARCH/nebula-cert /nebula-cert
 
 VOLUME ["/config"]
 
