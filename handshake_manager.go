@@ -236,18 +236,32 @@ func (hm *HandshakeManager) handleOutbound(vpnIp netip.Addr, lighthouseTriggered
 	}
 
 	// Send the handshake to all known ips, stage 2 takes care of assigning the hostinfo.remote based on the first to reply
+	chunked := needsChunking(hostinfo.HandshakePacket[0])
 	var sentTo []netip.AddrPort
 	hostinfo.remotes.ForEach(hm.mainHostMap.GetPreferredRanges(), func(addr netip.AddrPort, _ bool) {
-		hm.messageMetrics.Tx(header.Handshake, header.MessageSubType(hostinfo.HandshakePacket[0][1]), 1)
-		err := hm.outside.WriteTo(hostinfo.HandshakePacket[0], addr)
-		if err != nil {
-			hostinfo.logger(hm.l).WithField("udpAddr", addr).
-				WithField("initiatorIndex", hostinfo.localIndexId).
-				WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
-				WithError(err).Error("Failed to send handshake message")
-
+		if chunked {
+			hm.messageMetrics.Tx(header.Handshake, header.HandshakeIXPSK0Chunked, 1)
+			err := sendHandshakeChunked(hm.l, hm.outside, hostinfo.HandshakePacket[0],
+				hostinfo.localIndexId, 0, addr)
+			if err != nil {
+				hostinfo.logger(hm.l).WithField("udpAddr", addr).
+					WithField("initiatorIndex", hostinfo.localIndexId).
+					WithField("handshake", m{"stage": 1, "style": "ix_psk0_chunked"}).
+					WithError(err).Error("Failed to send chunked handshake message")
+			} else {
+				sentTo = append(sentTo, addr)
+			}
 		} else {
-			sentTo = append(sentTo, addr)
+			hm.messageMetrics.Tx(header.Handshake, header.MessageSubType(hostinfo.HandshakePacket[0][1]), 1)
+			err := hm.outside.WriteTo(hostinfo.HandshakePacket[0], addr)
+			if err != nil {
+				hostinfo.logger(hm.l).WithField("udpAddr", addr).
+					WithField("initiatorIndex", hostinfo.localIndexId).
+					WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
+					WithError(err).Error("Failed to send handshake message")
+			} else {
+				sentTo = append(sentTo, addr)
+			}
 		}
 	})
 
@@ -345,7 +359,12 @@ func (hm *HandshakeManager) handleOutbound(vpnIp netip.Addr, lighthouseTriggered
 			switch existingRelay.State {
 			case Established:
 				hostinfo.logger(hm.l).WithField("relay", relay.String()).Info("Send handshake via relay")
-				hm.f.SendVia(relayHostInfo, existingRelay, hostinfo.HandshakePacket[0], make([]byte, 12), make([]byte, mtu), false)
+				if chunked {
+					sendHandshakeChunkedVia(hm.f, relayHostInfo, existingRelay, hostinfo.HandshakePacket[0],
+						hostinfo.localIndexId, 0)
+				} else {
+					hm.f.SendVia(relayHostInfo, existingRelay, hostinfo.HandshakePacket[0], make([]byte, 12), make([]byte, mtu), false)
+				}
 			case Disestablished:
 				// Mark this relay as 'requested'
 				relayHostInfo.relayState.UpdateRelayForByIpState(vpnIp, Requested)
