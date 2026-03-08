@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"dario.cat/mergo"
+	"github.com/fsnotify/fsnotify"
 	"github.com/sirupsen/logrus"
 	"go.yaml.in/yaml/v3"
 )
@@ -141,6 +142,107 @@ func (c *C) CatchHUP(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// CatchCertChange watches the parent directories of the configured pki.cert, pki.key, and pki.ca
+// file paths for filesystem changes (e.g., K8s Secret volume atomic symlink swaps) and triggers
+// a config reload. Changes are debounced: after the last filesystem event, the method waits
+// for the specified debounce duration before reloading to coalesce rapid updates (e.g., cert and
+// key updated in quick succession). The watcher is stopped when ctx is cancelled.
+func (c *C) CatchCertChange(ctx context.Context, debounce time.Duration) {
+	if c.path == "" {
+		return
+	}
+
+	certPaths := c.GetCertPaths()
+	if len(certPaths) == 0 {
+		c.l.Warn("No certificate file paths configured, cert file watching disabled")
+		return
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		c.l.WithError(err).Error("Failed to create fsnotify watcher for cert files")
+		return
+	}
+
+	// Watch parent directories because K8s uses atomic symlink swaps at the
+	// directory level, not individual file writes.
+	watched := make(map[string]bool)
+	for _, p := range certPaths {
+		dir := filepath.Dir(p)
+		absDir, err := filepath.Abs(dir)
+		if err != nil {
+			c.l.WithError(err).WithField("path", dir).Warn("Failed to resolve absolute path for cert directory")
+			continue
+		}
+		if watched[absDir] {
+			continue
+		}
+		if err := watcher.Add(absDir); err != nil {
+			c.l.WithError(err).WithField("dir", absDir).Warn("Failed to watch cert directory")
+			continue
+		}
+		watched[absDir] = true
+		c.l.WithField("dir", absDir).Info("Watching directory for certificate changes")
+	}
+
+	if len(watched) == 0 {
+		c.l.Warn("No cert directories could be watched, cert file watching disabled")
+		watcher.Close()
+		return
+	}
+
+	go func() {
+		defer watcher.Close()
+		var timer *time.Timer
+		for {
+			select {
+			case <-ctx.Done():
+				if timer != nil {
+					timer.Stop()
+				}
+				return
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				c.l.WithField("event", event).Debug("Cert directory fsnotify event")
+				// Reset the debounce timer on every event
+				if timer != nil {
+					timer.Stop()
+				}
+				timer = time.AfterFunc(debounce, func() {
+					c.l.Info("Certificate file change detected, reloading config")
+					c.ReloadConfig()
+				})
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				c.l.WithError(err).Error("fsnotify watcher error")
+			}
+		}
+	}()
+}
+
+// GetCertPaths returns the file paths for pki.cert, pki.key, and pki.ca from the current
+// config settings, filtering out inline PEM data and empty values.
+func (c *C) GetCertPaths() []string {
+	keys := []string{"pki.cert", "pki.key", "pki.ca"}
+	var paths []string
+	for _, k := range keys {
+		v := c.GetString(k, "")
+		if v == "" {
+			continue
+		}
+		// Skip inline PEM data and PKCS#11 URIs — only watch actual file paths
+		if strings.Contains(v, "-----BEGIN") || strings.HasPrefix(v, "pkcs11:") {
+			continue
+		}
+		paths = append(paths, v)
+	}
+	return paths
 }
 
 func (c *C) ReloadConfig() {
