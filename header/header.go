@@ -60,8 +60,9 @@ const (
 )
 
 const (
-	HandshakeIXPSK0 MessageSubType = 0
-	HandshakeXXPSK0 MessageSubType = 1
+	HandshakeIXPSK0        MessageSubType = 0
+	HandshakeXXPSK0        MessageSubType = 1
+	HandshakeIXPSK0Chunked MessageSubType = 2
 )
 
 var ErrHeaderTooShort = errors.New("header is too short")
@@ -83,7 +84,8 @@ var subTypeMap = map[MessageType]*map[MessageSubType]string{
 	Test:        &subTypeTestMap,
 	CloseTunnel: &subTypeNoneMap,
 	Handshake: {
-		HandshakeIXPSK0: "ix_psk0",
+		HandshakeIXPSK0:        "ix_psk0",
+		HandshakeIXPSK0Chunked: "ix_psk0_chunked",
 	},
 	Control: &subTypeNoneMap,
 }
@@ -192,4 +194,68 @@ func NewHeader(b []byte) (*H, error) {
 		return nil, err
 	}
 	return h, nil
+}
+
+// ChunkHeader is an 8-byte header prepended to each RS-coded chunk of an
+// oversized handshake message. It sits between the Nebula header and the
+// chunk payload.
+//
+//	0       8      16      24      32
+//	|-------|-------|-------|-------|
+//	|        handshake_id (uint32) |
+//	|-------|-------|-------|-------|
+//	|msg_num|chunk_i| total | data |
+//	|-------|-------|-------|-------|
+const ChunkHeaderLen = 8
+
+type ChunkHeader struct {
+	HandshakeID uint32 // Matches InitiatorIndex for session disambiguation
+	NoiseMsgNum uint8  // 0 = message 1 (initiator), 1 = message 2 (responder)
+	ChunkIdx    uint8  // 0..TotalChunks-1
+	TotalChunks uint8  // Total number of chunks (k + m)
+	DataShards  uint8  // Number of data shards (k), reconstruction threshold
+}
+
+var ErrChunkHeaderTooShort = errors.New("chunk header is too short")
+
+// EncodeChunkHeader writes an 8-byte chunk header into the provided slice.
+// The slice must have capacity for at least ChunkHeaderLen bytes.
+func EncodeChunkHeader(b []byte, handshakeID uint32, noiseMsgNum, chunkIdx, totalChunks, dataShards uint8) []byte {
+	b = b[:ChunkHeaderLen]
+	binary.BigEndian.PutUint32(b[0:4], handshakeID)
+	b[4] = noiseMsgNum
+	b[5] = chunkIdx
+	b[6] = totalChunks
+	b[7] = dataShards
+	return b
+}
+
+// ParseChunkHeader reads an 8-byte chunk header from the provided bytes.
+func (ch *ChunkHeader) Parse(b []byte) error {
+	if len(b) < ChunkHeaderLen {
+		return ErrChunkHeaderTooShort
+	}
+	ch.HandshakeID = binary.BigEndian.Uint32(b[0:4])
+	ch.NoiseMsgNum = b[4]
+	ch.ChunkIdx = b[5]
+	ch.TotalChunks = b[6]
+	ch.DataShards = b[7]
+	return nil
+}
+
+// Encode writes the chunk header into the provided byte slice.
+func (ch *ChunkHeader) Encode(b []byte) ([]byte, error) {
+	if ch == nil {
+		return nil, errors.New("nil chunk header")
+	}
+	return EncodeChunkHeader(b, ch.HandshakeID, ch.NoiseMsgNum, ch.ChunkIdx, ch.TotalChunks, ch.DataShards), nil
+}
+
+// String creates a readable string representation of a chunk header.
+func (ch *ChunkHeader) String() string {
+	if ch == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("handshake_id=%d noise_msg=%d chunk=%d/%d data_shards=%d",
+		ch.HandshakeID, ch.NoiseMsgNum, ch.ChunkIdx, ch.TotalChunks, ch.DataShards)
 }

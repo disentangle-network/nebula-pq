@@ -60,6 +60,7 @@ type HandshakeManager struct {
 	metricTimedOut         metrics.Counter
 	f                      *Interface
 	l                      *logrus.Logger
+	reassembly             *ReassemblyManager
 
 	// can be used to trigger outbound handshake for the given vpnIp
 	trigger chan netip.Addr
@@ -117,6 +118,7 @@ func NewHandshakeManager(l *logrus.Logger, mainHostMap *HostMap, lightHouse *Lig
 		metricInitiated:        metrics.GetOrRegisterCounter("handshake_manager.initiated", nil),
 		metricTimedOut:         metrics.GetOrRegisterCounter("handshake_manager.timed_out", nil),
 		l:                      l,
+		reassembly:             NewReassemblyManager(l),
 	}
 }
 
@@ -157,6 +159,19 @@ func (hm *HandshakeManager) HandleIncoming(via ViaSender, packet []byte, h *head
 			if tearDown && newHostinfo != nil {
 				hm.DeleteHostInfo(newHostinfo.hostinfo)
 			}
+		}
+
+	case header.HandshakeIXPSK0Chunked:
+		// RS-coded chunk: buffer and attempt reassembly
+		reassembled, ok := hm.reassembly.HandleChunk(packet, h)
+		if ok {
+			// Reassembly complete: re-parse the reconstructed header and process as normal
+			var reassembledH header.H
+			if err := reassembledH.Parse(reassembled); err != nil {
+				hm.l.WithError(err).Error("Failed to parse reassembled handshake header")
+				return
+			}
+			hm.HandleIncoming(via, reassembled, &reassembledH)
 		}
 	}
 }
@@ -236,18 +251,32 @@ func (hm *HandshakeManager) handleOutbound(vpnIp netip.Addr, lighthouseTriggered
 	}
 
 	// Send the handshake to all known ips, stage 2 takes care of assigning the hostinfo.remote based on the first to reply
+	chunked := needsChunking(hostinfo.HandshakePacket[0])
 	var sentTo []netip.AddrPort
 	hostinfo.remotes.ForEach(hm.mainHostMap.GetPreferredRanges(), func(addr netip.AddrPort, _ bool) {
-		hm.messageMetrics.Tx(header.Handshake, header.MessageSubType(hostinfo.HandshakePacket[0][1]), 1)
-		err := hm.outside.WriteTo(hostinfo.HandshakePacket[0], addr)
-		if err != nil {
-			hostinfo.logger(hm.l).WithField("udpAddr", addr).
-				WithField("initiatorIndex", hostinfo.localIndexId).
-				WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
-				WithError(err).Error("Failed to send handshake message")
-
+		if chunked {
+			hm.messageMetrics.Tx(header.Handshake, header.HandshakeIXPSK0Chunked, 1)
+			err := sendHandshakeChunked(hm.l, hm.outside, hostinfo.HandshakePacket[0],
+				hostinfo.localIndexId, 0, addr)
+			if err != nil {
+				hostinfo.logger(hm.l).WithField("udpAddr", addr).
+					WithField("initiatorIndex", hostinfo.localIndexId).
+					WithField("handshake", m{"stage": 1, "style": "ix_psk0_chunked"}).
+					WithError(err).Error("Failed to send chunked handshake message")
+			} else {
+				sentTo = append(sentTo, addr)
+			}
 		} else {
-			sentTo = append(sentTo, addr)
+			hm.messageMetrics.Tx(header.Handshake, header.MessageSubType(hostinfo.HandshakePacket[0][1]), 1)
+			err := hm.outside.WriteTo(hostinfo.HandshakePacket[0], addr)
+			if err != nil {
+				hostinfo.logger(hm.l).WithField("udpAddr", addr).
+					WithField("initiatorIndex", hostinfo.localIndexId).
+					WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
+					WithError(err).Error("Failed to send handshake message")
+			} else {
+				sentTo = append(sentTo, addr)
+			}
 		}
 	})
 
@@ -345,7 +374,12 @@ func (hm *HandshakeManager) handleOutbound(vpnIp netip.Addr, lighthouseTriggered
 			switch existingRelay.State {
 			case Established:
 				hostinfo.logger(hm.l).WithField("relay", relay.String()).Info("Send handshake via relay")
-				hm.f.SendVia(relayHostInfo, existingRelay, hostinfo.HandshakePacket[0], make([]byte, 12), make([]byte, mtu), false)
+				if chunked {
+					sendHandshakeChunkedVia(hm.f, relayHostInfo, existingRelay, hostinfo.HandshakePacket[0],
+						hostinfo.localIndexId, 0)
+				} else {
+					hm.f.SendVia(relayHostInfo, existingRelay, hostinfo.HandshakePacket[0], make([]byte, 12), make([]byte, mtu), false)
+				}
 			case Disestablished:
 				// Mark this relay as 'requested'
 				relayHostInfo.relayState.UpdateRelayForByIpState(vpnIp, Requested)

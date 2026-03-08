@@ -402,17 +402,35 @@ func ixHandshakeStage1(f *Interface, via ViaSender, packet []byte, h *header.H) 
 			}
 
 			msg = existing.HandshakePacket[2]
-			f.messageMetrics.Tx(header.Handshake, header.MessageSubType(msg[1]), 1)
+			cachedChunked := needsChunking(msg)
+			if cachedChunked {
+				f.messageMetrics.Tx(header.Handshake, header.HandshakeIXPSK0Chunked, 1)
+			} else {
+				f.messageMetrics.Tx(header.Handshake, header.MessageSubType(msg[1]), 1)
+			}
 			if !via.IsRelayed {
-				err := f.outside.WriteTo(msg, via.UdpAddr)
-				if err != nil {
-					f.l.WithField("vpnAddrs", existing.vpnAddrs).WithField("from", via).
-						WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).WithField("cached", true).
-						WithError(err).Error("Failed to send handshake message")
+				if cachedChunked {
+					err := sendHandshakeChunked(f.l, f.outside, msg, existing.remoteIndexId, 1, via.UdpAddr)
+					if err != nil {
+						f.l.WithField("vpnAddrs", existing.vpnAddrs).WithField("from", via).
+							WithField("handshake", m{"stage": 2, "style": "ix_psk0_chunked"}).WithField("cached", true).
+							WithError(err).Error("Failed to send chunked handshake message")
+					} else {
+						f.l.WithField("vpnAddrs", existing.vpnAddrs).WithField("from", via).
+							WithField("handshake", m{"stage": 2, "style": "ix_psk0_chunked"}).WithField("cached", true).
+							Info("Handshake message sent")
+					}
 				} else {
-					f.l.WithField("vpnAddrs", existing.vpnAddrs).WithField("from", via).
-						WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).WithField("cached", true).
-						Info("Handshake message sent")
+					err := f.outside.WriteTo(msg, via.UdpAddr)
+					if err != nil {
+						f.l.WithField("vpnAddrs", existing.vpnAddrs).WithField("from", via).
+							WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).WithField("cached", true).
+							WithError(err).Error("Failed to send handshake message")
+					} else {
+						f.l.WithField("vpnAddrs", existing.vpnAddrs).WithField("from", via).
+							WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).WithField("cached", true).
+							Info("Handshake message sent")
+					}
 				}
 				return
 			} else {
@@ -421,9 +439,17 @@ func ixHandshakeStage1(f *Interface, via ViaSender, packet []byte, h *header.H) 
 					return
 				}
 				hostinfo.relayState.InsertRelayTo(via.relayHI.vpnAddrs[0])
-				f.SendVia(via.relayHI, via.relay, msg, make([]byte, 12), make([]byte, mtu), false)
+				if cachedChunked {
+					sendHandshakeChunkedVia(f, via.relayHI, via.relay, msg, existing.remoteIndexId, 1)
+				} else {
+					f.SendVia(via.relayHI, via.relay, msg, make([]byte, 12), make([]byte, mtu), false)
+				}
+				hsStyle := "ix_psk0"
+				if cachedChunked {
+					hsStyle = "ix_psk0_chunked"
+				}
 				f.l.WithField("vpnAddrs", existing.vpnAddrs).WithField("relay", via.relayHI.vpnAddrs[0]).
-					WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).WithField("cached", true).
+					WithField("handshake", m{"stage": 2, "style": hsStyle}).WithField("cached", true).
 					Info("Handshake message sent")
 				return
 			}
@@ -471,16 +497,29 @@ func ixHandshakeStage1(f *Interface, via ViaSender, packet []byte, h *header.H) 
 	}
 
 	// Do the send
-	f.messageMetrics.Tx(header.Handshake, header.MessageSubType(msg[1]), 1)
+	chunked := needsChunking(msg)
+	if chunked {
+		f.messageMetrics.Tx(header.Handshake, header.HandshakeIXPSK0Chunked, 1)
+	} else {
+		f.messageMetrics.Tx(header.Handshake, header.MessageSubType(msg[1]), 1)
+	}
 	if !via.IsRelayed {
-		err = f.outside.WriteTo(msg, via.UdpAddr)
+		if chunked {
+			err = sendHandshakeChunked(f.l, f.outside, msg, hs.Details.InitiatorIndex, 1, via.UdpAddr)
+		} else {
+			err = f.outside.WriteTo(msg, via.UdpAddr)
+		}
+		hsStyle := "ix_psk0"
+		if chunked {
+			hsStyle = "ix_psk0_chunked"
+		}
 		log := f.l.WithField("vpnAddrs", vpnAddrs).WithField("from", via).
 			WithField("certName", certName).
 			WithField("certVersion", certVersion).
 			WithField("fingerprint", fingerprint).
 			WithField("issuer", issuer).
 			WithField("initiatorIndex", hs.Details.InitiatorIndex).WithField("responderIndex", hs.Details.ResponderIndex).
-			WithField("remoteIndex", h.RemoteIndex).WithField("handshake", m{"stage": 2, "style": "ix_psk0"})
+			WithField("remoteIndex", h.RemoteIndex).WithField("handshake", m{"stage": 2, "style": hsStyle})
 		if err != nil {
 			log.WithError(err).Error("Failed to send handshake")
 		} else {
@@ -495,14 +534,22 @@ func ixHandshakeStage1(f *Interface, via ViaSender, packet []byte, h *header.H) 
 		// I successfully received a handshake. Just in case I marked this tunnel as 'Disestablished', ensure
 		// it's correctly marked as working.
 		via.relayHI.relayState.UpdateRelayForByIdxState(via.remoteIdx, Established)
-		f.SendVia(via.relayHI, via.relay, msg, make([]byte, 12), make([]byte, mtu), false)
+		if chunked {
+			sendHandshakeChunkedVia(f, via.relayHI, via.relay, msg, hs.Details.InitiatorIndex, 1)
+		} else {
+			f.SendVia(via.relayHI, via.relay, msg, make([]byte, 12), make([]byte, mtu), false)
+		}
+		hsStyle := "ix_psk0"
+		if chunked {
+			hsStyle = "ix_psk0_chunked"
+		}
 		f.l.WithField("vpnAddrs", vpnAddrs).WithField("relay", via.relayHI.vpnAddrs[0]).
 			WithField("certName", certName).
 			WithField("certVersion", certVersion).
 			WithField("fingerprint", fingerprint).
 			WithField("issuer", issuer).
 			WithField("initiatorIndex", hs.Details.InitiatorIndex).WithField("responderIndex", hs.Details.ResponderIndex).
-			WithField("remoteIndex", h.RemoteIndex).WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).
+			WithField("remoteIndex", h.RemoteIndex).WithField("handshake", m{"stage": 2, "style": hsStyle}).
 			Info("Handshake message sent")
 	}
 
