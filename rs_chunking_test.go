@@ -35,7 +35,7 @@ func TestRsEncodeDecodeRoundTrip(t *testing.T) {
 
 	// Verify each chunk has correct headers
 	for i, chunk := range chunks {
-		assert.True(t, len(chunk) <= header.Len+header.ChunkHeaderLen+DefaultChunkPayloadSize,
+		assert.LessOrEqual(t, len(chunk), header.Len+header.ChunkHeaderLen+DefaultChunkPayloadSize,
 			"chunk %d too large: %d bytes", i, len(chunk))
 
 		var h header.H

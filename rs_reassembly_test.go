@@ -196,7 +196,7 @@ func TestReassemblyManagerExpiry(t *testing.T) {
 	rm.ExpireBuffers()
 
 	rm.mu.Lock()
-	assert.Len(t, rm.buffers, 0)
+	assert.Empty(t, rm.buffers)
 	rm.mu.Unlock()
 }
 
